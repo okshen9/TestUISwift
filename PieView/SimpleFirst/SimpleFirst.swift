@@ -1,69 +1,67 @@
 import SwiftUI
 
+// Основной View для нескольких сегментов
 struct SimpleFirst: View {
     let slices: [PieModel]
-    @State private var selectedSlice: PieModel?
-    
-    // Настраиваемые параметры
-    let segmentSpacing: Double // Отступ между сегментами (0.0 - 1.0)
-    
-    init(slices: [PieModel], segmentSpacing: Double = 0.02) {
+    let segmentSpacing: Double
+    let cornerRadius: CGFloat
+
+    init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10) {
         self.slices = slices
         self.segmentSpacing = segmentSpacing
+        self.cornerRadius = cornerRadius
     }
-    
+
     private var normalizedSlices: [(model: PieModel, normalizedValue: Double)] {
-        let totalValue = slices.reduce(0.0) { $0 + $1.totalValue }
+        let total = slices.map(\ .totalValue).reduce(0, +)
         let totalSpacing = segmentSpacing * Double(slices.count)
-        let availableSpace = 1.0 - totalSpacing
-        
+        let available = 1 - totalSpacing
         return slices.map { slice in
-            let normalizedValue = (slice.totalValue / totalValue) * availableSpace
-            return (slice, normalizedValue)
+            let nv = (slice.totalValue / total) * available
+            return (slice, nv)
         }
     }
-    
+
     var body: some View {
         VStack {
-            // Круговая диаграмма
-            ZStack {
-                ForEach(Array(normalizedSlices.enumerated()), id: \.element.model.id) { index, sliceData in
-                    let startAngle = calculateStartAngle(for: index)
-                    let endAngle = startAngle + .degrees(360 * sliceData.normalizedValue)
-                    
-                    ZStack {
-                        // Фоновый слой
+            GeometryReader { geometry in
+                ZStack {
+                    ForEach(Array(normalizedSlices.enumerated()), id: \ .element.model.id) { idx, entry in
+                        let start = calculateStartAngle(index: idx)
+                        let norm = entry.normalizedValue
+                        let bgEnd = start + .degrees(360 * norm)
+                        let fgPortion = entry.model.currentValue * norm
+                        let fgEnd = start + .degrees(360 * fgPortion)
+
                         PieSimpleSliceView(
-                            simpleSliceModel: .init(
-                                color: sliceData.model.color.opacity(0.3),
-                                value: sliceData.normalizedValue,
-                                startAngle: startAngle,
-                                endAngle: endAngle,
-                                cornerRadius: 0
+                            model: .init(
+                                color: entry.model.color.lighten(),
+                                startAngle: start,
+                                endAngle: bgEnd,
+                                cornerRadius: cornerRadius
                             )
                         )
-                        
-                        // Передний слой с текущим значением
+
                         PieSimpleSliceView(
-                            simpleSliceModel: .init(
-                                color: sliceData.model.color,
-                                value: sliceData.model.currentvlue * sliceData.normalizedValue,
-                                startAngle: startAngle,
-                                endAngle: startAngle + .degrees(360 * sliceData.model.currentvlue * sliceData.normalizedValue),
-                                cornerRadius: 0
+                            model: .init(
+                                color: entry.model.color,
+                                startAngle: start,
+                                endAngle: fgEnd,
+                                cornerRadius: cornerRadius
                             )
                         )
                     }
-                    .onTapGesture {
-                        withAnimation(.spring()) {
-                            selectedSlice = sliceData.model
-                        }
-                    }
+                    .animation(.easeInOut(duration: 0.7), value: slices)
+
+                    Circle()
+                        .foregroundStyle(.white)
+                        .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             .frame(width: 300, height: 300)
             .padding()
-            
+
             // Легенда
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(slices) { slice in
@@ -80,27 +78,55 @@ struct SimpleFirst: View {
             .padding()
         }
     }
-    
-    private func calculateStartAngle(for index: Int) -> Angle {
-        let previousValues = normalizedSlices.prefix(index).reduce(0.0) { $0 + $1.normalizedValue }
-        return .degrees(360 * (previousValues + Double(index) * segmentSpacing))
+
+    private func calculateStartAngle(index: Int) -> Angle {
+        let previousTotal = normalizedSlices.prefix(index).reduce(0) { $0 + $1.normalizedValue }
+        let offset = previousTotal + Double(index) * segmentSpacing
+        return .degrees(360 * offset)
+    }
+
+    private func offset(for start: Angle, end: Angle, radius: CGFloat) -> CGSize {
+        let mid = Angle.degrees((start.degrees + end.degrees) / 2)
+        let baseOffset: CGFloat = 20
+        let effectiveRadius = radius * 0.0
+
+        let dx = cos(mid.radians) * baseOffset + (cos(mid.radians) * effectiveRadius)
+        let dy = sin(mid.radians) * baseOffset + (sin(mid.radians) * effectiveRadius)
+
+        return CGSize(width: dx, height: dy)
     }
 }
 
-// Предварительный просмотр
-struct SimpleFirst_Previews: PreviewProvider {
-    static var previews: some View {
-        SimpleFirst(
-            slices: [
-                PieModel(totalValue: 0.3, currentvlue: 0.2, subModel: nil, color: .red, title: "Категория 1"),
-                PieModel(totalValue: 0.4, currentvlue: 0.3, subModel: nil, color: .blue, title: "Категория 2"),
-                PieModel(totalValue: 0.3, currentvlue: 0.9, subModel: nil, color: .green, title: "Категория 3")
-            ],
-            segmentSpacing: 0.02 // 2% отступ между сегментами
-        )
-    }
-}
 
-#Preview("Multi Slice Pie Chart") {
 
+#Preview {
+    @Previewable @State var value = PieModel(totalValue: 0.3, currentValue: 0.2, color: .red, title: "Категория 1")
+
+    @Previewable @State var value2 =         [
+        PieModel(totalValue: 0.3, currentValue: 0.2, color: .red, title: "Категория 1"),
+                    PieModel(totalValue: 0.4, currentValue: 0.3, color: .green, title: "Категория 2"),
+                    PieModel(totalValue: 0.3, currentValue: 1.0, color: .blue, title: "Категория 3"),
+                    PieModel(totalValue: 0.3, currentValue: 0.9, color: .yellow, title: "Категория 4")
+                ]
+
+    SimpleFirst(
+        slices: value2
+//            [
+////            PieModel(totalValue: 0.3, currentValue: value, color: .red, title: "Категория 1"),
+//            value,
+//            PieModel(totalValue: 0.4, currentValue: 0.3, color: .green, title: "Категория 2"),
+//            PieModel(totalValue: 0.3, currentValue: 1.0, color: .blue, title: "Категория 3"),
+//            PieModel(totalValue: 0.3, currentValue: 0.9, color: .yellow, title: "Категория 4")
+//        ]
+    )
+
+    Button(action: {
+//        value = PieModel(totalValue: 0.3, currentValue: Double.random(in: 0...1), color: .red, title: "Категория 1")
+
+        value2 = [ PieModel(totalValue: 0.3, currentValue: Double.random(in: 0...1), color: .red, title: "Категория 1"),
+                    PieModel(totalValue: 0.4, currentValue: 0.3, color: .green, title: "Категория 2"),
+                    PieModel(totalValue: 0.3, currentValue: 1.0, color: .blue, title: "Категория 3"),
+                    PieModel(totalValue: 0.3, currentValue: 0.9, color: .yellow, title: "Категория 4")
+                ]
+    }, label: {Text(("sdsd"))})
 }

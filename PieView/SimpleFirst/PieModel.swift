@@ -8,12 +8,14 @@
 
 import SwiftUI
 
-struct PieModel: Identifiable {
+struct PieModel: Identifiable, Equatable {
     let id = UUID()
+    /// уровень вложенности модели по subModel
+    var levelModel: Int = 0
     /// процент от общего значения Category
     var totalValue: Double
     /// текущее заполенение конкретной Category
-    var currentvlue: Double
+    var currentValue: Double
     /// дочерние модели
     var subModel: [PieModel]?
     /// цвет для модели

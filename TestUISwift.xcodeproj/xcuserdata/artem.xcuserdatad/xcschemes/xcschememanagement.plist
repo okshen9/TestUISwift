@@ -17,7 +17,7 @@
 		<key>PieView.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>6</integer>
+			<integer>2</integer>
 		</dict>
 		<key>SiriIntents.xcscheme_^#shared#^_</key>
 		<dict>
@@ -37,7 +37,7 @@
 		<key>share.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>2</integer>
+			<integer>5</integer>
 		</dict>
 	</dict>
 	<key>SuppressBuildableAutocreation</key>
