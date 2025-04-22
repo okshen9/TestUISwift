@@ -9,6 +9,9 @@ struct SimpleFirst: View {
     // Анимируемое состояние для плавных переходов
     @State private var animatableSlices: [PieModel] = []
     @State private var id = UUID()
+    @State private var scale: CGFloat = 1.0
+    @State private var opacity: Double = 1.0
+    @State private var isChangingStructure = false
     
     init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10) {
         self.slices = slices
@@ -29,6 +32,7 @@ struct SimpleFirst: View {
     var body: some View {
         VStack {
             GeometryReader { geometry in
+                // Диаграмма с анимацией масштаба и прозрачности
                 ZStack {
                     // Используем id для явного обновления всего содержимого
                     ForEach(normalizedSlices, id: \.model.id) { entry in
@@ -49,7 +53,6 @@ struct SimpleFirst: View {
                             )
                         )
                         .id("\(entry.model.id)-bg")
-                        .transition(AnyTransition.scale.combined(with: .opacity))
 
                         // Слой прогресса
                         PieSimpleSliceView(
@@ -61,19 +64,19 @@ struct SimpleFirst: View {
                             )
                         )
                         .id("\(entry.model.id)-fg")
-                        .transition(AnyTransition.scale.combined(with: .opacity))
                     }
                     
                     // Центральный круг
                     Circle()
                         .foregroundStyle(.white)
                         .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
-                        .transition(AnyTransition.scale.combined(with: .opacity))
                     
                     let present = (animatableSlices.reduce(0.0) { $0 + $1.currentValue }) / Double(animatableSlices.isEmpty ? 1 : animatableSlices.count)
                     Text("Выполнено \(Int(present * 100))%")
                         .fontWeight(.semibold)
                 }
+                .scaleEffect(scale)
+                .opacity(opacity)
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .id(id) // Используем id для обновления всего ZStack
             }
@@ -95,6 +98,7 @@ struct SimpleFirst: View {
                     .transition(AnyTransition.opacity.combined(with: .slide))
                 }
             }
+            .opacity(opacity)
             .padding()
         }
         .onChange(of: slices) { oldValue, newValue in
@@ -105,19 +109,40 @@ struct SimpleFirst: View {
                     animatableSlices = newValue
                 }
             } else {
-                // Изменение структуры - анимация с эффектом масштабирования
-                withAnimation(.spring(duration: 0.8, bounce: 0.3)) {
+                // Изменение структуры - анимируем исчезновение всей диаграммы
+                isChangingStructure = true
+                
+                // Анимация уменьшения и исчезновения
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    scale = 0.1
+                    opacity = 0
+                }
+                
+                // После исчезновения обновляем данные
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     animatableSlices = newValue
-                    // Генерируем новый id для принудительного обновления
-                    id = UUID()
+                    id = UUID() // Принудительное обновление структуры диаграммы
+                    
+                    // Анимация появления и увеличения
+                    withAnimation(.spring(duration: 0.6, bounce: 0.3)) {
+                        scale = 1.0
+                        opacity = 1.0
+                    }
+                    
+                    isChangingStructure = false
                 }
             }
         }
         .onAppear {
             // При первом появлении анимируем с нуля
+            scale = 0.1
+            opacity = 0
+            
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 withAnimation(.spring(duration: 0.8)) {
                     animatableSlices = slices
+                    scale = 1.0
+                    opacity = 1.0
                 }
             }
         }
