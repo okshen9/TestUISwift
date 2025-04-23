@@ -71,6 +71,36 @@ struct SimpleFirst: View {
                         .onTapGesture {
                             navigateToSubmodels(of: entry.model)
                         }
+                        .overlay {
+                            if entry.model.subModel != nil && !(entry.model.subModel?.isEmpty ?? true) {
+                                // Вычисляем позицию для индикатора
+                                let midAngle = (start + bgEnd) / 2
+                                let radius = min(geometry.size.width, geometry.size.height) / 2.5
+                                let indicatorX = geometry.size.width / 2 + cos(midAngle.radians) * radius
+                                let indicatorY = geometry.size.height / 2 + sin(midAngle.radians) * radius
+                                
+                                ZStack {
+                                    // Светящийся круг
+                                    Circle()
+                                        .fill(entry.model.color.opacity(0.3))
+                                        .blur(radius: 4)
+                                        .frame(width: 30, height: 30)
+                                
+                                    // Индикатор в виде круга со стрелкой
+                                    Circle()
+                                        .fill(.white)
+                                        .frame(width: 22, height: 22)
+                                        .overlay {
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(entry.model.color)
+                                                .rotationEffect(.radians(midAngle.radians - .pi/2))
+                                        }
+                                        .shadow(color: .black.opacity(0.2), radius: 2)
+                                }
+                                .position(x: indicatorX, y: indicatorY)
+                            }
+                        }
 
                         // Слой прогресса
                         PieSimpleSliceView(
@@ -96,14 +126,40 @@ struct SimpleFirst: View {
                     Circle()
                         .foregroundStyle(.white)
                         .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
+                        .shadow(color: .black.opacity(0.1), radius: 2)
                         .contentShape(Circle())
                         .onTapGesture {
                             navigateToParentLevel()
                         }
                     
                     let present = (animatableSlices.reduce(0.0) { $0 + $1.currentValue }) / Double(animatableSlices.isEmpty ? 1 : animatableSlices.count)
-                    Text("Выполнено \(Int(present * 100))%")
-                        .fontWeight(.semibold)
+                    VStack(spacing: 6) {
+                        if currentLevel > -1 {
+                            // Индикатор перехода на уровень выше в центре
+                            ZStack {
+                                // Светящийся эффект
+                                Circle()
+                                    .fill(Color.blue.opacity(0.2))
+                                    .frame(width: 30, height: 30)
+                                    .blur(radius: 4)
+                                
+                                // Иконка
+                                Circle()
+                                    .fill(.white)
+                                    .frame(width: 26, height: 26)
+                                    .overlay {
+                                        Image(systemName: "arrow.up")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundColor(.blue)
+                                    }
+                                    .shadow(color: .black.opacity(0.2), radius: 1)
+                            }
+                            .frame(maxWidth: 20, maxHeight: 20)
+                        }
+                        Text("Выполнено \(Int(present * 100))%")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
                 }
                 .scaleEffect(scale)
                 .opacity(opacity)
