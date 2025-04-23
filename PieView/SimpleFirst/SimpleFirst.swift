@@ -21,11 +21,15 @@ struct SimpleFirst: View {
     // Название диаграммы
     let diagramTitle: String
     
-    init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10, title: String = "Главная") {
+    // Флаг для размещения легенды сбоку
+    let legendOnSide: Bool
+    
+    init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10, title: String = "Главная", legendOnSide: Bool = false) {
         self.slices = slices
         self.segmentSpacing = segmentSpacing
         self.cornerRadius = cornerRadius
         self.diagramTitle = title
+        self.legendOnSide = legendOnSide
     }
     
     private var normalizedSlices: [(model: PieModel, normalizedValue: Double)] {
@@ -39,222 +43,76 @@ struct SimpleFirst: View {
     }
 
     var body: some View {
-        VStack {
-            // Заголовок с текущим уровнем
-            Text(currentTitle)
-                .font(.headline)
-                .padding(.top)
-
-            GeometryReader { geometry in
-                // Диаграмма с анимацией масштаба и прозрачности
-                ZStack {
-                    // Используем id для явного обновления всего содержимого
-                    ForEach(normalizedSlices, id: \.model.id) { entry in
-                        let idx = animatableSlices.firstIndex(where: { $0.id == entry.model.id }) ?? 0
-                        let start = calculateStartAngle(index: idx)
-                        let norm = entry.normalizedValue
-                        let bgEnd = start + .degrees(360 * norm)
-                        let fgPortion = entry.model.currentValue * norm
-                        let fgEnd = start + .degrees(360 * fgPortion)
-
-                        // Фоновый слой
-                        PieSimpleSliceView(
-                            model: .init(
-                                color: entry.model.color.lighten(),
-                                startAngle: start,
-                                endAngle: bgEnd,
-                                cornerRadius: cornerRadius
-                            )
-                        )
-                        .id("\(entry.model.id)-bg")
-                        .contentShape(PieSliceShape(
-                            startAngle: start,
-                            endAngle: bgEnd,
-                            cornerRadius: cornerRadius
-                        ))
-                        .onTapGesture {
-                            navigateToSubmodels(of: entry.model)
-                        }
-                        .overlay {
-                            if entry.model.subModel != nil && !(entry.model.subModel?.isEmpty ?? true) {
-                                // Вычисляем позицию для индикатора
-                                let midAngle = (start + bgEnd) / 2
-                                let radius = min(geometry.size.width, geometry.size.height) / 2.5
-                                let indicatorX = geometry.size.width / 2 + cos(midAngle.radians) * radius
-                                let indicatorY = geometry.size.height / 2 + sin(midAngle.radians) * radius
-                                
-                                ZStack {
-                                    // Светящийся круг
-                                    Circle()
-                                        .fill(entry.model.color.opacity(0.3))
-                                        .blur(radius: 4)
-                                        .frame(width: 30, height: 30)
-                                
-                                    // Индикатор в виде круга со стрелкой
-                                    Circle()
-                                        .fill(.white)
-                                        .frame(width: 22, height: 22)
-                                        .overlay {
-                                            Image(systemName: "chevron.down")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(entry.model.color)
-                                                .rotationEffect(.radians(midAngle.radians - .pi/2))
-                                        }
-                                        .shadow(color: .black.opacity(0.2), radius: 2)
-                                }
-                                .position(x: indicatorX, y: indicatorY)
-                            }
-                        }
-
-                        // Слой прогресса
-                        PieSimpleSliceView(
-                            model: .init(
-                                color: entry.model.color,
-                                startAngle: start,
-                                endAngle: fgEnd,
-                                cornerRadius: cornerRadius
-                            )
-                        )
-                        .id("\(entry.model.id)-fg")
-                        .contentShape(PieSliceShape(
-                            startAngle: start,
-                            endAngle: fgEnd,
-                            cornerRadius: cornerRadius
-                        ))
-                        .onTapGesture {
-                            navigateToSubmodels(of: entry.model)
-                        }
-                    }
-                    
-                    // Центральный круг
-                    Circle()
-                        .foregroundStyle(.white)
-                        .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
-                        .shadow(color: .black.opacity(0.1), radius: 2)
-                        .contentShape(Circle())
-                        .onTapGesture {
-                            navigateToParentLevel()
-                        }
-                    
-                    let present = (animatableSlices.reduce(0.0) { $0 + $1.currentValue }) / Double(animatableSlices.isEmpty ? 1 : animatableSlices.count)
-                    VStack(spacing: 6) {
-                        if currentLevel > 0 {
-                            // Индикатор перехода на уровень выше в центре
-                            ZStack {
-                                // Светящийся эффект
-                                Circle()
-                                    .fill(Color.blue.opacity(0.2))
-                                    .frame(width: 30, height: 30)
-                                    .blur(radius: 4)
-                                
-                                // Иконка
-                                Circle()
-                                    .fill(.white)
-                                    .frame(width: 26, height: 26)
-                                    .overlay {
-                                        Image(systemName: "arrow.up")
-                                            .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(.blue)
-                                    }
-                                    .shadow(color: .black.opacity(0.2), radius: 1)
-                            }
-                            .frame(maxWidth: 20, maxHeight: 20)
-                        }
+        GeometryReader { proxy in
+            Group {
+                if legendOnSide {
+                    HStack(alignment: .center, spacing: 4) {
+                        chartView(size: proxy.size)
                         
-                        // Название текущего уровня
-                        Text(currentLevel == 0 ? diagramTitle : currentTitle)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .minimumScaleFactor(0.7)
-                        
-                        Text("Выполнено \(Int(present * 100))%")
-                            .fontWeight(.semibold)
+                        // Компактная легенда сбоку
+                        legendView
                     }
-                    .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
-                }
-                .scaleEffect(scale)
-                .opacity(opacity)
-                .frame(width: geometry.size.width, height: geometry.size.height)
-                .id(id) // Используем id для обновления всего ZStack
-            }
-            .frame(width: 300, height: 300)
-            .padding()
-            
-            // Легенда
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(animatableSlices) { slice in
-                    HStack {
-                        Circle()
-                            .fill(slice.color)
-                            .frame(width: 20, height: 20)
-                        Text(slice.title)
-                        Text("(\(Int(slice.totalValue * 100))%)")
-                            .foregroundColor(.secondary)
+                } else {
+                    VStack(spacing: 0) {
+                        // Заголовок с текущим уровнем
+                        Text(currentTitle)
+                            .font(.headline)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
                         
-                        // Индикатор наличия дочерних моделей
-                        if slice.subModel != nil && !(slice.subModel?.isEmpty ?? true) {
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .id("\(slice.id)-legend")
-                    .transition(AnyTransition.opacity.combined(with: .slide))
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        navigateToSubmodels(of: slice)
+                        chartView(size: proxy.size)
+                        
+                        // Легенда снизу
+                        legendView
                     }
                 }
             }
-            .opacity(opacity)
-            .padding()
-        }
-        .onChange(of: slices) { oldValue, newValue in
-            // Определяем тип изменения
-            if hasSameStructureButDifferentValues(oldValue, newValue) {
-                // Только изменение прогресса - плавная анимация
-                withAnimation(.easeInOut(duration: 0.7)) {
-                    animatableSlices = newValue
-                }
-            } else {
-                // Изменение структуры - анимируем исчезновение всей диаграммы
-                isChangingStructure = true
-                
-                // Анимация уменьшения и исчезновения
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    scale = 0.1
-                    opacity = 0
-                }
-                
-                // После исчезновения обновляем данные
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    animatableSlices = newValue
-                    id = UUID() // Принудительное обновление структуры диаграммы
+            .onChange(of: slices) { oldValue, newValue in
+                // Определяем тип изменения
+                if hasSameStructureButDifferentValues(oldValue, newValue) {
+                    // Только изменение прогресса - плавная анимация
+                    withAnimation(.easeInOut(duration: 0.7)) {
+                        animatableSlices = newValue
+                    }
+                } else {
+                    // Изменение структуры - анимируем исчезновение всей диаграммы
+                    isChangingStructure = true
                     
-                    // Анимация появления и увеличения
-                    withAnimation(.spring(duration: 0.6, bounce: 0.3)) {
+                    // Анимация уменьшения и исчезновения
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        scale = 0.1
+                        opacity = 0
+                    }
+                    
+                    // После исчезновения обновляем данные
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        animatableSlices = newValue
+                        id = UUID() // Принудительное обновление структуры диаграммы
+                        
+                        // Анимация появления и увеличения
+                        withAnimation(.spring(duration: 0.6, bounce: 0.3)) {
+                            scale = 1.0
+                            opacity = 1.0
+                        }
+                        
+                        isChangingStructure = false
+                    }
+                }
+            }
+            .onAppear {
+                // При первом появлении анимируем с нуля
+                scale = 0.1
+                opacity = 0
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(duration: 0.8)) {
+                        animatableSlices = slices
+                        navigationHistory = [[]] // Инициализируем историю навигации
+                        currentLevel = 0
+                        currentTitle = diagramTitle // Устанавливаем начальный заголовок
                         scale = 1.0
                         opacity = 1.0
                     }
-                    
-                    isChangingStructure = false
-                }
-            }
-        }
-        .onAppear {
-            // При первом появлении анимируем с нуля
-            scale = 0.1
-            opacity = 0
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.spring(duration: 0.8)) {
-                    animatableSlices = slices
-                    navigationHistory = [[]] // Инициализируем историю навигации
-                    currentLevel = 0
-                    currentTitle = diagramTitle // Устанавливаем начальный заголовок
-                    scale = 1.0
-                    opacity = 1.0
                 }
             }
         }
@@ -355,6 +213,239 @@ struct SimpleFirst: View {
             }
         }
     }
+
+    // Вынесенное представление диаграммы, принимающее доступный размер
+    private func chartView(size: CGSize) -> some View {
+        let availableWidth = legendOnSide ? size.width * 0.7 : size.width * 0.9
+        let availableHeight = legendOnSide ? size.height * 0.9 : size.height * 0.6
+        let chartSize = min(availableWidth, availableHeight)
+        
+        return GeometryReader { geometry in
+            // Диаграмма с анимацией масштаба и прозрачности
+            ZStack {
+                // Используем id для явного обновления всего содержимого
+                ForEach(normalizedSlices, id: \.model.id) { entry in
+                    let idx = animatableSlices.firstIndex(where: { $0.id == entry.model.id }) ?? 0
+                    let start = calculateStartAngle(index: idx)
+                    let norm = entry.normalizedValue
+                    let bgEnd = start + .degrees(360 * norm)
+                    let fgPortion = entry.model.currentValue * norm
+                    let fgEnd = start + .degrees(360 * fgPortion)
+
+                    // Фоновый слой
+                    PieSimpleSliceView(
+                        model: .init(
+                            color: entry.model.color.lighten(),
+                            startAngle: start,
+                            endAngle: bgEnd,
+                            cornerRadius: cornerRadius
+                        )
+                    )
+                    .id("\(entry.model.id)-bg")
+                    .contentShape(PieSliceShape(
+                        startAngle: start,
+                        endAngle: bgEnd,
+                        cornerRadius: cornerRadius
+                    ))
+                    .onTapGesture {
+                        navigateToSubmodels(of: entry.model)
+                    }
+                    .overlay {
+                        if entry.model.subModel != nil && !(entry.model.subModel?.isEmpty ?? true) {
+                            // Вычисляем позицию для индикатора
+                            let midAngle = (start + bgEnd) / 2
+                            let radius = min(geometry.size.width, geometry.size.height) / 2.5
+                            let indicatorX = geometry.size.width / 2 + cos(midAngle.radians) * radius
+                            let indicatorY = geometry.size.height / 2 + sin(midAngle.radians) * radius
+                            
+                            ZStack {
+                                // Светящийся круг
+                                Circle()
+                                    .fill(entry.model.color.opacity(0.3))
+                                    .blur(radius: 4)
+                                    .frame(width: 30, height: 30)
+                                
+                                // Индикатор в виде круга со стрелкой
+                                Circle()
+                                    .fill(.white)
+                                    .frame(width: 22, height: 22)
+                                    .overlay {
+                                        Image(systemName: "chevron.down")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(entry.model.color)
+                                            .rotationEffect(.radians(midAngle.radians - .pi/2))
+                                    }
+                                    .shadow(color: .black.opacity(0.2), radius: 2)
+                            }
+                            .position(x: indicatorX, y: indicatorY)
+                        }
+                    }
+
+                    // Слой прогресса
+                    PieSimpleSliceView(
+                        model: .init(
+                            color: entry.model.color,
+                            startAngle: start,
+                            endAngle: fgEnd,
+                            cornerRadius: cornerRadius
+                        )
+                    )
+                    .id("\(entry.model.id)-fg")
+                    .contentShape(PieSliceShape(
+                        startAngle: start,
+                        endAngle: fgEnd,
+                        cornerRadius: cornerRadius
+                    ))
+                    .onTapGesture {
+                        navigateToSubmodels(of: entry.model)
+                    }
+                }
+                
+                // Центральный круг
+                Circle()
+                    .foregroundStyle(.white)
+                    .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
+                    .shadow(color: .black.opacity(0.1), radius: 2)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        navigateToParentLevel()
+                    }
+                
+                let present = (animatableSlices.reduce(0.0) { $0 + $1.currentValue }) / Double(animatableSlices.isEmpty ? 1 : animatableSlices.count)
+                VStack(spacing: 6) {
+                    if currentLevel > 0 {
+                        // Индикатор перехода на уровень выше в центре
+                        ZStack {
+                            // Светящийся эффект
+                            Circle()
+                                .fill(Color.blue.opacity(0.2))
+                                .frame(width: 30, height: 30)
+                                .blur(radius: 4)
+                            
+                            // Иконка
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 26, height: 26)
+                                .overlay {
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(.blue)
+                                }
+                                .shadow(color: .black.opacity(0.2), radius: 1)
+                        }
+                        .frame(maxWidth: 20, maxHeight: 20)
+                    }
+                    
+                    // Название текущего уровня
+                    Text(currentLevel == 0 ? diagramTitle : currentTitle)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .minimumScaleFactor(0.7)
+                    
+                    Text("Выполнено \(Int(present * 100))%")
+                        .fontWeight(.semibold)
+                }
+                .frame(width: geometry.size.width / 1.5, height: geometry.size.height / 1.5)
+            }
+            .scaleEffect(scale)
+            .opacity(opacity)
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .id(id) // Используем id для обновления всего ZStack
+        }
+        .frame(width: chartSize, height: chartSize)
+        .padding(.horizontal, legendOnSide ? 0 : 8)
+        .padding(.vertical, 8)
+    }
+    
+    // Вынесенное представление легенды
+    private var legendView: some View {
+        Group {
+            if legendOnSide {
+                // Вертикальная легенда для горизонтального режима
+                LazyVGrid(
+                    columns: [GridItem(.flexible())],
+                    alignment: .leading,
+                    spacing: 6
+                ) {
+                    legendItems
+                }
+                .opacity(opacity)
+                .padding(.horizontal, 4)
+                .frame(width: UIScreen.main.bounds.width * 0.25)
+            } else {
+                // Двухстрочная легенда с горизонтальным скролом для вертикального режима
+                VStack(spacing: 6) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHGrid(
+                            rows: [
+                                GridItem(.adaptive(minimum: 22, maximum: 40)),
+                                GridItem(.adaptive(minimum: 22, maximum: 40))
+                            ],
+                            alignment: .top,
+                            spacing: 10
+                        ) {
+                            legendItems
+                        }
+                        .padding(.horizontal, 8)
+                    }
+                }
+                .opacity(opacity)
+                .frame(height: 90)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+    }
+
+    // Элементы легенды, используемые в обоих режимах
+    private var legendItems: some View {
+        ForEach(animatableSlices) { slice in
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    // Цветной индикатор
+                    Circle()
+                        .fill(slice.color)
+                        .frame(width: legendOnSide ? 8 : 10, height: legendOnSide ? 8 : 10)
+                    
+                    // Заголовок без процентов
+                    Text(slice.title)
+                        .font(.system(size: legendOnSide ? 12 : 13))
+                        .lineLimit(legendOnSide ? 1 : 2)
+                        .truncationMode(.tail)
+                        .multilineTextAlignment(.leading)
+                    
+                    // Индикатор наличия подуровней
+                    if slice.subModel != nil && !(slice.subModel?.isEmpty ?? true) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: legendOnSide ? 8 : 9))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                // Процент на отдельной строке (или вместе для бокового режима)
+                if !legendOnSide {
+                    Text("\(Int(slice.currentValue * 100))%")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 14) // Отступ для выравнивания с названием
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(width: legendOnSide ? nil : min(200, max(120, UIScreen.main.bounds.width * 0.3)))
+            .padding(.vertical, legendOnSide ? 4 : 4)
+            .padding(.horizontal, legendOnSide ? 4 : 6)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(6)
+            .id("\(slice.id)-legend")
+            .contentShape(Rectangle())
+            .onTapGesture {
+                navigateToSubmodels(of: slice)
+            }
+        }
+    }
 }
 
 // Создадим расширение для анимируемого PieModel
@@ -397,75 +488,12 @@ extension PieModel: Animatable {
         PieModel(totalValue: 0.3, currentValue: 1.0, color: .blue, title: "Категория 3"),
         PieModel(totalValue: 0.3, currentValue: 0.9, color: .yellow, title: "Категория 4")
     ]
-
-    VStack {
-        SimpleFirst(slices: value2, title: "Мои цели")
-            .frame(height: 400)
-        Spacer()
-        HStack {
-            Button(action: {
-                // Генерируем случайные значения для прогресса
-                value2 = value2.map { model in
-                    var newModel = model
-                    newModel.currentValue = Double.random(in: 0...1)
-                    
-                    // Также обновляем значения в подмоделях, если они есть
-                    if var subModels = model.subModel {
-                        subModels = subModels.map { subModel in
-                            var newSubModel = subModel
-                            newSubModel.currentValue = Double.random(in: 0...1)
-                            return newSubModel
-                        }
-                        newModel.subModel = subModels
-                    }
-                    
-                    return newModel
-                }
-            }, label: { Text("Изменить значения") })
-            
-            Button(action: {
-                // Изменяем структуру (добавляем/удаляем элементы)
-                if value2.count > 3 {
-                    value2 = [
-                        PieModel(
-                            totalValue: 0.5, 
-                            currentValue: 0.6, 
-                            subModel: [
-                                PieModel(totalValue: 1.0, currentValue: 0.3, color: .indigo, title: "Подкатегория")
-                            ],
-                            color: .red, 
-                            title: "Здоровье"
-                        ),
-                        PieModel(totalValue: 0.5, currentValue: 0.8, color: .blue, title: "Категория 3")
-                    ]
-                } else {
-                    value2 = [
-                        PieModel(
-                            totalValue: 0.3, 
-                            currentValue: 0.2, 
-                            subModel: [
-                                PieModel(totalValue: 0.5, currentValue: 0.3, color: .orange, title: "Подкатегория 1.1"),
-                                PieModel(totalValue: 0.5, currentValue: 0.7, color: .pink, title: "Подкатегория 1.2")
-                            ],
-                            color: .red, 
-                            title: "Здоровье"
-                        ),
-                        PieModel(
-                            totalValue: 0.4, 
-                            currentValue: 0.3, 
-                            subModel: [
-                                PieModel(totalValue: 0.3, currentValue: 0.6, color: .mint, title: "Подкатегория 2.1"),
-                                PieModel(totalValue: 0.3, currentValue: 0.4, color: .teal, title: "Подкатегория 2.2"),
-                                PieModel(totalValue: 0.4, currentValue: 0.2, color: .cyan, title: "Подкатегория 2.3")
-                            ],
-                            color: .green, 
-                            title: "Бизнес"
-                        ),
-                        PieModel(totalValue: 0.3, currentValue: 1.0, color: .blue, title: "Категория 3"),
-                        PieModel(totalValue: 0.3, currentValue: 0.9, color: .yellow, title: "Категория 4")
-                    ]
-                }
-            }, label: { Text("Изменить структуру") })
-        }
+    
+    TabView {
+        SimpleFirst(slices: value2, title: "Стандартный режим")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        SimpleFirst(slices: value2, title: "С легендой сбоку", legendOnSide: true)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    .tabViewStyle(.page)
 }
