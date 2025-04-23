@@ -24,7 +24,7 @@ struct SimpleFirst: View {
     // Флаг для размещения легенды сбоку
     let legendOnSide: Bool
     
-    init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10, title: String = "Главная", legendOnSide: Bool = false) {
+    init(slices: [PieModel], segmentSpacing: Double = 0.02, cornerRadius: CGFloat = 10, title: String = "Главная", legendOnSide: Bool = false) {
         self.slices = slices
         self.segmentSpacing = segmentSpacing
         self.cornerRadius = cornerRadius
@@ -402,39 +402,42 @@ struct SimpleFirst: View {
     // Элементы легенды, используемые в обоих режимах
     private var legendItems: some View {
         ForEach(animatableSlices) { slice in
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    // Цветной индикатор
-                    Circle()
-                        .fill(slice.color)
-                        .frame(width: legendOnSide ? 8 : 10, height: legendOnSide ? 8 : 10)
+            GeometryReader { geo in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        // Цветной индикатор
+                        Circle()
+                            .fill(slice.color)
+                            .frame(width: legendOnSide ? 8 : 10, height: legendOnSide ? 8 : 10)
+                        
+                        // Заголовок без процентов
+                        Text(slice.title)
+                            .font(.system(size: legendOnSide ? 12 : 13))
+                            .lineLimit(legendOnSide ? 1 : 2)
+                            .truncationMode(.tail)
+                            .multilineTextAlignment(.leading)
+                        
+                        // Индикатор наличия подуровней
+                        if slice.subModel != nil && !(slice.subModel?.isEmpty ?? true) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: legendOnSide ? 8 : 9))
+                                .foregroundColor(.secondary)
+                        }
+                    }
                     
-                    // Заголовок без процентов
-                    Text(slice.title)
-                        .font(.system(size: legendOnSide ? 12 : 13))
-                        .lineLimit(legendOnSide ? 1 : 2)
-                        .truncationMode(.tail)
-                        .multilineTextAlignment(.leading)
-                    
-                    // Индикатор наличия подуровней
-                    if slice.subModel != nil && !(slice.subModel?.isEmpty ?? true) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: legendOnSide ? 8 : 9))
+                    // Процент на отдельной строке (или вместе для бокового режима)
+                    if !legendOnSide {
+                        Text("\(Int(slice.currentValue * 100))%")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
+                            .padding(.leading, 14) // Отступ для выравнивания с названием
+                    } else {
+                        Spacer(minLength: 0)
                     }
                 }
-                
-                // Процент на отдельной строке (или вместе для бокового режима)
-                if !legendOnSide {
-                    Text("\(Int(slice.currentValue * 100))%")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 14) // Отступ для выравнивания с названием
-                } else {
-                    Spacer(minLength: 0)
-                }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            .frame(width: legendOnSide ? nil : min(200, max(120, UIScreen.main.bounds.width * 0.3)))
+            .frame(width: legendItemWidth(for: slice.title))
             .padding(.vertical, legendOnSide ? 4 : 4)
             .padding(.horizontal, legendOnSide ? 4 : 6)
             .background(Color.gray.opacity(0.1))
@@ -444,6 +447,19 @@ struct SimpleFirst: View {
             .onTapGesture {
                 navigateToSubmodels(of: slice)
             }
+        }
+    }
+
+    // Функция для расчета адаптивной ширины элемента легенды
+    private func legendItemWidth(for title: String) -> CGFloat {
+        let baseWidth: CGFloat = 60 // Базовая ширина для процентов и иконок
+        let titleWidth = min(CGFloat(title.count) * 7.5, 150) // Примерная ширина текста
+        
+        if legendOnSide {
+            return UIScreen.main.bounds.width * 0.23 // Боковой режим использует процент от ширины экрана
+        } else {
+            // Адаптивная ширина, но не менее 120 и не более 200
+            return min(200, max(120, baseWidth + titleWidth))
         }
     }
 }
@@ -468,8 +484,16 @@ extension PieModel: Animatable {
             totalValue: 0.3, 
             currentValue: 0.2, 
             subModel: [
-                PieModel(totalValue: 0.5, currentValue: 0.3, color: .orange, title: "Подкатегория 1.1"),
-                PieModel(totalValue: 0.5, currentValue: 0.7, color: .pink, title: "Подкатегория 1.2")
+                PieModel(totalValue: 0.1, currentValue: 0.3, color: .orange, title: "Подкатегория 1.1"),
+                PieModel(totalValue: 0.1, currentValue: 0.7, color: .pink, title: "Подкатегория 1.2"),
+                PieModel(totalValue: 0.1, currentValue: 0.4, color: .red.opacity(0.7), title: "Подкатегория 1.3"),
+                PieModel(totalValue: 0.1, currentValue: 0.6, color: .orange.opacity(0.8), title: "Подкатегория 1.4"),
+                PieModel(totalValue: 0.1, currentValue: 0.5, color: .pink.opacity(0.6), title: "Подкатегория 1.5"),
+                PieModel(totalValue: 0.1, currentValue: 0.8, color: .red.opacity(0.5), title: "Подкатегория длинное название"),
+                PieModel(totalValue: 0.1, currentValue: 0.2, color: .orange.opacity(0.7), title: "Подкатегория 1.7"),
+                PieModel(totalValue: 0.1, currentValue: 0.9, color: .pink.opacity(0.8), title: "Подкатегория 1.8"),
+                PieModel(totalValue: 0.1, currentValue: 0.7, color: .red.opacity(0.6), title: "Подкатегория 1.9"),
+                PieModel(totalValue: 0.1, currentValue: 0.3, color: .orange.opacity(0.9), title: "Подкатегория 1.10")
             ],
             color: .red, 
             title: "Здоровье"
