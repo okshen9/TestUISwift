@@ -18,10 +18,14 @@ struct SimpleFirst: View {
     @State private var navigationHistory: [[PieModel]] = []
     @State private var currentTitle: String = "Главная"
     
-    init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10) {
+    // Название диаграммы
+    let diagramTitle: String
+    
+    init(slices: [PieModel], segmentSpacing: Double = 0.03, cornerRadius: CGFloat = 10, title: String = "Главная") {
         self.slices = slices
         self.segmentSpacing = segmentSpacing
         self.cornerRadius = cornerRadius
+        self.diagramTitle = title
     }
     
     private var normalizedSlices: [(model: PieModel, normalizedValue: Double)] {
@@ -134,7 +138,7 @@ struct SimpleFirst: View {
                     
                     let present = (animatableSlices.reduce(0.0) { $0 + $1.currentValue }) / Double(animatableSlices.isEmpty ? 1 : animatableSlices.count)
                     VStack(spacing: 6) {
-                        if currentLevel > -1 {
+                        if currentLevel > 0 {
                             // Индикатор перехода на уровень выше в центре
                             ZStack {
                                 // Светящийся эффект
@@ -156,6 +160,15 @@ struct SimpleFirst: View {
                             }
                             .frame(maxWidth: 20, maxHeight: 20)
                         }
+                        
+                        // Название текущего уровня
+                        Text(currentLevel == 0 ? diagramTitle : currentTitle)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .minimumScaleFactor(0.7)
+                        
                         Text("Выполнено \(Int(present * 100))%")
                             .fontWeight(.semibold)
                     }
@@ -239,6 +252,7 @@ struct SimpleFirst: View {
                     animatableSlices = slices
                     navigationHistory = [[]] // Инициализируем историю навигации
                     currentLevel = 0
+                    currentTitle = diagramTitle // Устанавливаем начальный заголовок
                     scale = 1.0
                     opacity = 1.0
                 }
@@ -277,7 +291,9 @@ struct SimpleFirst: View {
         }
         
         // Переходим на уровень ниже
-        currentLevel += 1
+        withAnimation {
+            currentLevel += 1
+        }
         currentTitle = model.title
         
         // Анимируем переход
@@ -314,11 +330,14 @@ struct SimpleFirst: View {
             
             // Обновляем заголовок
             if currentLevel == 0 {
-                currentTitle = "Главная"
+                currentTitle = diagramTitle
             } else {
-                // Для промежуточных уровней можно было бы хранить их названия,
-                // но для простоты используем фиксированное имя
-                currentTitle = "Уровень \(currentLevel)"
+                // Для промежуточных уровней используем название из модели соответствующего уровня
+                if let parentModel = self.navigationHistory.prefix(currentLevel).last?.first(where: { model in
+                    model.subModel?.contains(where: { $0.title == self.currentTitle }) ?? false
+                }) {
+                    currentTitle = parentModel.title
+                }
             }
             
             // Восстанавливаем данные предыдущего уровня
@@ -380,7 +399,8 @@ extension PieModel: Animatable {
     ]
 
     VStack {
-        SimpleFirst(slices: value2)
+        SimpleFirst(slices: value2, title: "Мои цели")
+            .frame(height: 400)
         Spacer()
         HStack {
             Button(action: {
